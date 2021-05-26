@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::iter::FromIterator;
 use std::net::SocketAddr;
 
 use parking_lot::RwLock;
@@ -25,23 +24,23 @@ struct PeerInfo {
 async fn main() {
     let initial_node: SocketAddr = "50.18.246.201:4131".parse().unwrap();
 
-    let mut nodes: Arc<RwLock<HashMap<SocketAddr, HashSet<SocketAddr>>>> =
+    let nodes: Arc<RwLock<HashMap<SocketAddr, HashSet<SocketAddr>>>> =
         Arc::new(RwLock::new(HashMap::new()));
     nodes.write().insert(initial_node, HashSet::new());
 
     // curl --data-binary '{"jsonrpc": "2.0", "id":"documentation", "method": "getpeerinfo", "params": [] }' -H 'content-type: application/json' http://127.0.0.1:3030/
-    let mut data_peers =
+    let data_peers =
         r#"{"jsonrpc": "2.0", "id":"documentation", "method": "getpeerinfo", "params": []}"#;
 
     loop {
         dbg!(&nodes.read());
         // Copy the addresses for this iteration.
-        let addrs: HashSet<SocketAddr> = HashSet::from_iter(nodes.read().keys().cloned());
+        let addrs: HashSet<SocketAddr> = nodes.read().keys().cloned().collect();
 
         for addr in addrs {
             let nodes_clone = nodes.clone();
             tokio::task::spawn(async move {
-                let mut rpc = addr.clone();
+                let mut rpc = addr;
                 rpc.set_port(RPC_PORT);
 
                 // Query the node for peers.
@@ -55,13 +54,13 @@ async fn main() {
                     .await;
 
                 let peer_info_response = match peer_info_res {
-                    Err(err) => return,
+                    Err(_err) => return,
                     Ok(res) => res.json::<PeerInfoResponse>().await.unwrap(),
                 };
 
                 // Update the list of peers for this node.
                 let result_peers = peer_info_response.result.peers.iter();
-                let new_peers = HashSet::from_iter(result_peers.clone().cloned());
+                let new_peers = result_peers.clone().cloned().collect();
                 nodes_clone.write().insert(addr, new_peers);
 
                 // Insert new address to be queried in the next loop.
