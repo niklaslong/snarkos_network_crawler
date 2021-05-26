@@ -7,6 +7,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 const RPC_PORT: u16 = 3030;
+const CRAWL_INTERVAL: u64 = 30;
 
 #[derive(Deserialize, Debug)]
 struct PeerInfoResponse {
@@ -71,6 +72,6 @@ async fn main() {
         }
 
         // Sleep for 10s between crawls.
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(CRAWL_INTERVAL)).await;
     }
 }
