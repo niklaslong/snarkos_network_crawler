@@ -74,7 +74,7 @@ async fn main() {
             });
         }
 
-        // Sleep for 10s between crawls.
+        // Sleep between crawls.
         tokio::time::sleep(std::time::Duration::from_secs(CRAWL_INTERVAL)).await;
     }
 }
