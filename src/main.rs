@@ -55,8 +55,11 @@ async fn main() {
                     .await;
 
                 let peer_info_response = match peer_info_res {
-                    Err(_err) => return,
-                    Ok(res) => res.json::<PeerInfoResponse>().await.unwrap(),
+                    Err(_e) => return,
+                    Ok(res) => match res.json::<PeerInfoResponse>().await {
+                        Ok(res) => res,
+                        Err(_e) => return,
+                    },
                 };
 
                 // Update the list of peers for this node.
