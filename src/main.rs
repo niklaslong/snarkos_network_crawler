@@ -7,7 +7,20 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 const RPC_PORT: u16 = 3030;
-const CRAWL_INTERVAL: u64 = 30;
+const CRAWL_INTERVAL: u64 = 2;
+
+#[derive(Deserialize, Debug)]
+struct NodeInfoResponse {
+    jsonrpc: String,
+    id: String,
+    result: NodeInfo,
+}
+
+#[derive(Deserialize, Debug)]
+struct NodeInfo {
+    is_miner: bool,
+    is_syncing: bool,
+}
 
 #[derive(Deserialize, Debug)]
 struct PeerInfoResponse {
@@ -21,20 +34,40 @@ struct PeerInfo {
     peers: Vec<SocketAddr>,
 }
 
+struct Node {
+    is_miner: bool,
+    is_syncing: bool,
+    peers: HashSet<SocketAddr>,
+}
+
 #[tokio::main]
 async fn main() {
     let initial_node: SocketAddr = "50.18.246.201:4131".parse().unwrap();
 
-    let nodes: Arc<RwLock<HashMap<SocketAddr, HashSet<SocketAddr>>>> =
+    let nodes: Arc<RwLock<HashMap<SocketAddr, Option<Node>>>> =
         Arc::new(RwLock::new(HashMap::new()));
-    nodes.write().insert(initial_node, HashSet::new());
+    nodes.write().insert(initial_node, None);
 
-    // curl --data-binary '{"jsonrpc": "2.0", "id":"documentation", "method": "getpeerinfo", "params": [] }' -H 'content-type: application/json' http://127.0.0.1:3030/
+    let data_info =
+        r#"{"jsonrpc": "2.0", "id":"documentation", "method": "getnodeinfo", "params": []}"#;
     let data_peers =
         r#"{"jsonrpc": "2.0", "id":"documentation", "method": "getpeerinfo", "params": []}"#;
 
     loop {
-        dbg!(&nodes.read());
+        println!("NODE COUNT: {}", nodes.read().len());
+        println!(
+            "MINER COUNT: {}",
+            nodes
+                .read()
+                .values()
+                .filter(|node| if let Some(node) = node {
+                    node.is_miner
+                } else {
+                    false
+                })
+                .count()
+        );
+
         // Copy the addresses for this iteration.
         let addrs: HashSet<SocketAddr> = nodes.read().keys().cloned().collect();
 
@@ -43,6 +76,23 @@ async fn main() {
             tokio::task::spawn(async move {
                 let mut rpc = addr;
                 rpc.set_port(RPC_PORT);
+
+                let client = reqwest::Client::new();
+                let node_info_res = client
+                    .post(format!("http://{}", rpc.clone()))
+                    .timeout(std::time::Duration::from_secs(5))
+                    .body(data_info)
+                    .header("content-type", "application/json")
+                    .send()
+                    .await;
+
+                let node_info_response = match node_info_res {
+                    Err(_e) => return,
+                    Ok(res) => match res.json::<NodeInfoResponse>().await {
+                        Ok(res) => res,
+                        Err(_e) => return,
+                    },
+                };
 
                 // Query the node for peers.
                 let client = reqwest::Client::new();
@@ -62,14 +112,28 @@ async fn main() {
                     },
                 };
 
+                let is_miner = node_info_response.result.is_miner;
+                let is_syncing = node_info_response.result.is_syncing;
+
                 // Update the list of peers for this node.
                 let result_peers = peer_info_response.result.peers.iter();
                 let new_peers = result_peers.clone().cloned().collect();
-                nodes_clone.write().insert(addr, new_peers);
+
+                let node = Node {
+                    is_miner,
+                    is_syncing,
+                    peers: new_peers,
+                };
+
+                nodes_clone.write().insert(addr, Some(node));
 
                 // Insert new address to be queried in the next loop.
                 for addr in result_peers {
-                    nodes_clone.write().insert(*addr, HashSet::new());
+                    let mut nodes_clone_g = nodes_clone.write();
+
+                    if !nodes_clone_g.contains_key(addr) {
+                        nodes_clone_g.insert(*addr, None);
+                    }
                 }
             });
         }
