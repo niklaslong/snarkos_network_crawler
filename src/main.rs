@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use itertools::Itertools;
 use parking_lot::RwLock;
 use serde::Deserialize;
-use std::sync::Arc;
 
 const RPC_PORT: u16 = 3030;
 const CRAWL_INTERVAL: u64 = 2;
@@ -20,6 +21,7 @@ struct NodeInfoResponse {
 struct NodeInfo {
     is_miner: bool,
     is_syncing: bool,
+    version: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -37,6 +39,7 @@ struct PeerInfo {
 struct Node {
     is_miner: bool,
     is_syncing: bool,
+    version: String,
     peers: HashSet<SocketAddr>,
 }
 
@@ -66,6 +69,16 @@ async fn main() {
                     false
                 })
                 .count()
+        );
+
+        println!(
+            "VERSION COUNTS: {:#?}",
+            nodes
+                .read()
+                .values()
+                .filter(|node| node.is_some())
+                .map(|node| &node.as_ref().unwrap().version)
+                .counts()
         );
 
         // Copy the addresses for this iteration.
@@ -114,6 +127,7 @@ async fn main() {
 
                 let is_miner = node_info_response.result.is_miner;
                 let is_syncing = node_info_response.result.is_syncing;
+                let version = node_info_response.result.version;
 
                 // Update the list of peers for this node.
                 let result_peers = peer_info_response.result.peers.iter();
@@ -122,6 +136,7 @@ async fn main() {
                 let node = Node {
                     is_miner,
                     is_syncing,
+                    version,
                     peers: new_peers,
                 };
 
