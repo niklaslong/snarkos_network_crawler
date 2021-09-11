@@ -45,7 +45,7 @@ struct Node {
 
 #[tokio::main]
 async fn main() {
-    let initial_node: SocketAddr = "50.18.246.201:4131".parse().unwrap();
+    let initial_node: SocketAddr = "159.89.152.247:4131".parse().unwrap();
 
     let nodes: Arc<RwLock<HashMap<SocketAddr, Option<Node>>>> =
         Arc::new(RwLock::new(HashMap::new()));
